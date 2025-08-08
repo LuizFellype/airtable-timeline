@@ -44,9 +44,7 @@ To run tests:
 
 ## What I Would Change If I Did It Again
 
-- **Modularize the code**: Separate logic from UI and architect better some resuable components.
-
-1. **Virtual Scrolling**: For very large datasets, finish implementing virtual scrolling to render only items within viewport.
+1. **Modularize the code**: Separate logic from UI and architect better some resuable components.
 
 2. **Better Mobile Support**: Add touch gesture support and mobile-optimized interactions.
 
@@ -57,6 +55,8 @@ To run tests:
 5. **Conflict Resolution**: Better handling of overlapping items and validation of date changes.
 
 6. **Improve UI**: all functionalities works but the UI could be more pleasing to improve UX.
+
+7. **Improve Drag and Drop expirience**: would consider small dragging by mistake while do a quick click and initial point of draggin item, it is considering the mouser position, not the start date of the item when start to move it AND show what is the day while dragging it.
 
 ## Design Decisions
 
