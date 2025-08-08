@@ -5,15 +5,8 @@ import { assignLanes } from '../src/assignLanes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-
-interface TimelineItem {
-  id: number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  color: string;
-  lane?: number;
-}
+import { validateDateRange } from '@/utils/date';
+import { TimelineItem } from '@/utils/types';
 
 interface TimelineProps {
   items: TimelineItem[];
@@ -28,6 +21,9 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
   const [editingItem, setEditingItem] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
+  const [editingStartDate, setEditingStartDate] = useState("")
+  const [editingEndDate, setEditingEndDate] = useState("")
+  
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // Calculate timeline bounds
@@ -128,8 +124,10 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
 
   // Replace the existing editing functions with these improved ones:
   const startEditing = (item: TimelineItem) => {
-    setEditingItem(item.id);
-    setEditingName(item.name);
+    setEditingItem(item.id)
+    setEditingName(item.name)
+    setEditingStartDate(item.startDate) // Correctly set initial start date
+    setEditingEndDate(item.endDate) // Correctly set initial end date
     setSelectedItem(null); // Clear selection when editing starts
   };
 
@@ -137,7 +135,17 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
     if (editingItem && editingName.trim()) {
       const item = items.find(i => i.id === editingItem);
       if (item) {
-        onItemUpdate?.({ ...item, name: editingName.trim() });
+        const validatedDates = validateDateRange(editingStartDate, editingEndDate)
+
+        const updatedItem = {
+          ...item,
+          name: editingName.trim(),
+          startDate: validatedDates.startDate,
+          endDate: validatedDates.endDate,
+        }
+
+        onItemUpdate?.(updatedItem)
+        // onItemUpdate?.({ ...item, name: editingName.trim() });
       }
     }
     setEditingItem(null);
