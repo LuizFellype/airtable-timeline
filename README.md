@@ -44,7 +44,7 @@ To run tests:
 
 ## What I Would Change If I Did It Again
 
-- **Modularize the code**: Complete editing date on edit modal. Separate logic from UI and architect better some resuable components.
+- **Modularize the code**: Separate logic from UI and architect better some resuable components.
 
 1. **Virtual Scrolling**: For very large datasets, finish implementing virtual scrolling to render only items within viewport.
 
@@ -56,6 +56,7 @@ To run tests:
 
 5. **Conflict Resolution**: Better handling of overlapping items and validation of date changes.
 
+6. **Improve UI**: all functionalities works but the UI could be more pleasing to improve UX.
 
 ## Design Decisions
 

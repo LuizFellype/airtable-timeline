@@ -4,9 +4,11 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { assignLanes } from '../src/assignLanes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-import { validateDateRange } from '@/utils/date';
+import { ZoomIn, ZoomOut, RotateCcw, CalendarIcon } from 'lucide-react';
+import { calculateDuration, formatDateForDisplay, formatDateForInput, isValidDateString, parseISO, validateDateRange } from '@/utils/date';
 import { TimelineItem } from '@/utils/types';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
 
 interface TimelineProps {
   items: TimelineItem[];
@@ -23,24 +25,24 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
   const [editingStartDate, setEditingStartDate] = useState("")
   const [editingEndDate, setEditingEndDate] = useState("")
-  
+
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // Calculate timeline bounds
   const { minDate, maxDate, totalDays } = useMemo(() => {
     if (items.length === 0) return { minDate: new Date(), maxDate: new Date(), totalDays: 0 };
-    
+
     const dates = items.flatMap(item => [new Date(item.startDate), new Date(item.endDate)]);
     const min = new Date(Math.min(...dates.map(d => d.getTime())));
     const max = new Date(Math.max(...dates.map(d => d.getTime())));
-    
+
     // Add some padding
     min.setDate(min.getDate() - 7);
     max.setDate(max.getDate() + 7);
-    
+
     const diffTime = max.getTime() - min.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     return { minDate: min, maxDate: max, totalDays: diffDays };
   }, [items]);
 
@@ -77,7 +79,7 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const newDate = pixelToDate(x);
-    
+
     const item = items.find(i => i.id === draggedItem);
     if (!item) return;
 
@@ -150,11 +152,15 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
     }
     setEditingItem(null);
     setEditingName('');
+    setEditingStartDate("")
+    setEditingEndDate("")
   };
 
   const cancelEdit = () => {
     setEditingItem(null);
     setEditingName('');
+    setEditingStartDate("")
+    setEditingEndDate("")
   };
 
   const handleItemClick = (e: React.MouseEvent, itemId: number) => {
@@ -176,14 +182,27 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
     const markers = [];
     const current = new Date(minDate);
     current.setDate(1); // Start of month
-    
+
     while (current <= maxDate) {
       markers.push(new Date(current));
       current.setMonth(current.getMonth() + 1);
     }
-    
+
     return markers;
   }, [minDate, maxDate]);
+
+
+  const isSaveDisabled = useMemo(() => {
+    return (
+      !editingName.trim() ||
+      !editingStartDate ||
+      !editingEndDate ||
+      (isValidDateString(editingStartDate) &&
+        isValidDateString(editingEndDate) &&
+        parseISO(editingStartDate) > parseISO(editingEndDate))
+    )
+  }, [editingName, editingStartDate, editingEndDate])
+
 
   return (
     <div className="w-full p-4">
@@ -220,10 +239,10 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
 
       {/* Timeline */}
       <div className="border rounded-lg bg-background overflow-x-auto">
-        <div 
+        <div
           ref={timelineRef}
           className="relative"
-          style={{ 
+          style={{
             width: `${800 * zoomLevel}px`,
             height: `${(maxLane + 1) * 60 + 80}px`,
             minWidth: '800px'
@@ -254,6 +273,169 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
             const isSelected = selectedItem === item.id;
             const isEditing = editingItem === item.id;
 
+            const selectionModalContent = (
+              <div
+                className="absolute bg-white border border-gray-300 rounded-lg shadow-lg p-2 z-20 space-y-2"
+                style={{
+                  left: `${startX}px`,
+                  top: `${y + 45}px`,
+                  minWidth: '200px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => startEditing(item)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Edit
+                  </Button>
+                  <span className="text-sm text-gray-600 truncate flex-1">
+                    {item.name}
+                  </span>
+                </div>
+
+                <div className="text-xs text-gray-500 space-y-1">
+                  <div>Start: {formatDateForDisplay(item.startDate)}</div>
+                  <div>End: {formatDateForDisplay(item.endDate)}</div>
+                  <div>Duration: {calculateDuration(item.startDate, item.endDate)} days</div>
+                </div>
+              </div>
+            )
+
+            const editingModalContent = (
+              <div
+                className="absolute bg-white border border-blue-500 rounded-lg shadow-lg p-3 z-20"
+                style={{
+                  left: `${startX}px`,
+                  top: `${y + 45}px`,
+                  minWidth: '300px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">
+                      Item Name
+                    </label>
+                    <Input
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          !isSaveDisabled && saveEdit();
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelEdit();
+                        }
+                      }}
+                      className="h-8 text-sm"
+                      placeholder="Enter item name..."
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Start Date</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full h-8 text-xs justify-start text-left font-normal bg-transparent"
+                          >
+                            <CalendarIcon className="mr-2 h-3 w-3" />
+                            {editingStartDate ? formatDateForDisplay(editingStartDate) : "Pick date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editingStartDate ? parseISO(editingStartDate) : undefined}
+                            month={editingStartDate ? parseISO(editingStartDate) : undefined} // Set month to selected date
+                            onSelect={(date) => {
+                              if (date) {
+                                const newStartDate = formatDateForInput(date.toISOString())
+                                setEditingStartDate(newStartDate)
+                              }
+                            }}
+                            disabled={(date) => {
+                              // Disable dates after current end date
+                              return !!editingEndDate && date > parseISO(editingEndDate)
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">End Date</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full h-8 text-xs justify-start text-left font-normal bg-transparent"
+                          >
+                            <CalendarIcon className="mr-2 h-3 w-3" />
+                            {editingEndDate ? formatDateForDisplay(editingEndDate) : "Pick date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={editingEndDate ? parseISO(editingEndDate) : undefined}
+                            month={editingEndDate ? parseISO(editingEndDate) : undefined} // Set month to selected date
+                            onSelect={(date) => {
+                              if (date) {
+                                const newEndDate = formatDateForInput(date.toISOString())
+                                setEditingEndDate(newEndDate)
+                               
+                              }
+                            }}
+                            disabled={(date) => {
+                              // Disable dates before current start date
+                              return !!editingStartDate && date < parseISO(editingStartDate)
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  {editingStartDate && editingEndDate && (
+                    <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                      Duration: {calculateDuration(editingStartDate, editingEndDate)} days
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={saveEdit}
+                      disabled={isSaveDisabled}
+                      className="h-7 px-3 text-xs"
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={cancelEdit}
+                      className="h-7 px-3 text-xs"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )
+
+
             return (
               <div key={item.id} className="absolute">
                 {/* Main item container */}
@@ -271,14 +453,13 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
                     className="absolute left-0 top-0 w-2 h-full cursor-ew-resize bg-transparent hover:bg-blue-500/20 z-10"
                     onMouseDown={(e) => handleMouseDown(e, item.id, 'resize-start')}
                   />
-                  
+
                   {/* Main item */}
                   <div
-                    className={`h-full rounded px-2 py-1 text-white text-sm flex items-center justify-between shadow-sm border transition-all ${
-                      isSelected 
-                        ? 'border-blue-500 border-2 shadow-lg' 
-                        : 'border-black/10'
-                    } ${!isEditing ? 'cursor-move' : ''}`}
+                    className={`h-full rounded px-2 py-1 text-white text-sm flex items-center justify-between shadow-sm border transition-all ${isSelected
+                      ? 'border-blue-500 border-2 shadow-lg'
+                      : 'border-black/10'
+                      } ${!isEditing ? 'cursor-move' : ''}`}
                     style={{ backgroundColor: item.color }}
                     onMouseDown={(e) => !isEditing ? handleMouseDown(e, item.id, 'move') : undefined}
                     onClick={(e) => handleItemClick(e, item.id)}
@@ -289,9 +470,9 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
                     >
                       {item.name}
                     </span>
-                    
+
                     <div className="text-xs opacity-75 ml-2 whitespace-nowrap">
-                      {new Date(item.endDate).getTime() - new Date(item.startDate).getTime() > 0 
+                      {new Date(item.endDate).getTime() - new Date(item.startDate).getTime() > 0
                         ? `${Math.ceil((new Date(item.endDate).getTime() - new Date(item.startDate).getTime()) / (1000 * 60 * 60 * 24))}d`
                         : '1d'
                       }
@@ -306,87 +487,10 @@ const Timeline: React.FC<TimelineProps> = ({ items, onItemUpdate }) => {
                 </div>
 
                 {/* Edit controls - positioned below the item when selected */}
-                {isSelected && !isEditing && (
-                  <div
-                    className="absolute bg-white border border-gray-300 rounded-lg shadow-lg p-2 z-20"
-                    style={{
-                      left: `${startX}px`,
-                      top: `${y + 45}px`,
-                      minWidth: '200px'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => startEditing(item)}
-                        className="h-7 px-2 text-xs"
-                      >
-                        Edit
-                      </Button>
-                      <span className="text-sm text-gray-600 truncate flex-1">
-                        {item.name}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {isSelected && !isEditing && selectionModalContent}
 
                 {/* Edit mode - positioned below the item when editing */}
-                {isEditing && (
-                  <div
-                    className="absolute bg-white border border-blue-500 rounded-lg shadow-lg p-3 z-20"
-                    style={{
-                      left: `${startX}px`,
-                      top: `${y + 45}px`,
-                      minWidth: '300px'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-xs font-medium text-gray-700 block mb-1">
-                          Item Name
-                        </label>
-                        <Input
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              saveEdit();
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              cancelEdit();
-                            }
-                          }}
-                          className="h-8 text-sm"
-                          placeholder="Enter item name..."
-                          autoFocus
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={saveEdit}
-                          disabled={!editingName.trim()}
-                          className="h-7 px-3 text-xs"
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={cancelEdit}
-                          className="h-7 px-3 text-xs"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {isEditing && editingModalContent}
               </div>
             );
           })}
